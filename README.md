@@ -7,6 +7,9 @@ This is step 1 of the FYP: get the unmodified core fetching, executing and talki
 host over UART, so that the CV-X-IF coprocessor port has a known-good platform to plug
 an SSM accelerator into later.
 
+> **Continuing this project in a new session? Start with [STATUS.md](STATUS.md)** —
+> current status against the plan, hard-won gotchas, baseline numbers, and next actions.
+
 ## Layout
 
 ```
