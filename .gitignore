@@ -1,0 +1,19 @@
+# Vivado build outputs
+build/
+.Xil/
+*.jou
+*.log
+*.str
+vivado_pid*
+
+# Firmware build outputs (regenerate with fw/build.sh)
+fw/*.elf
+fw/*.bin
+fw/*.o
+fw/*.map
+fw/*.dis
+fw/*.mem
+
+# Upstream core is cloned, not vendored into history.
+# See scripts/fetch_core.sh for the pinned revision.
+vendor/
