@@ -17,3 +17,6 @@ fw/*.mem
 # Upstream core is cloned, not vendored into history.
 # See scripts/fetch_core.sh for the pinned revision.
 vendor/
+
+# GUI project (regenerate with scripts/create_gui_project.tcl)
+vivado_gui/
