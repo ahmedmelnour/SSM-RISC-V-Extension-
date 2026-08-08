@@ -91,3 +91,38 @@ right — that is exactly the failure mode LED2 exists to rule out.
   the wrong file being picked up fails the build rather than producing a broken bitstream.
 - CV-X-IF is instantiated and tied off to "always reject" with `X_EXT = 0`. The port is
   present and correctly typed, ready for the accelerator phase.
+
+## Bring-up result (verified 2026-08-09)
+
+Hardware, not simulation: `xc7a35t_0` via Digilent `210241416548`, DONE = 1.
+
+```
+=====================================
+ CV32E40X alive on MicroPhase A7-Lite
+ RV32IMC @ 50 MHz, 32KB BRAM
+=====================================
+tick 0
+tick 1
+tick 2
+...
+```
+
+313 consecutive ticks captured from reset with zero gaps. `UART_TX` = `V2` is
+confirmed correct on hardware.
+
+| Metric | Value |
+|---|---|
+| LUTs | 3733 / 20800 (18%) |
+| Registers | 2304 / 41600 (5.5%) |
+| RAMB36 | 8 / 50 (16%) |
+| DSP48 | 3 / 90 |
+| WNS / WHS | +1.660 ns / +0.084 ns |
+
+**Headroom note:** WNS of +1.660 ns at a 20 ns period implies Fmax ≈ 54.5 MHz, only
+about 9% margin. The core alone is already close to the limit at 50 MHz on this part,
+so an accelerator on the CV-X-IF port needs to stay off the critical path or the clock
+will have to come down.
+
+If a UART capture shows dropped lines, check whether JTAG programming was running at
+the same time — the FT232H and the CH340 share USB bus 003, and contention drops bytes
+host-side. A capture taken on its own is gap-free.

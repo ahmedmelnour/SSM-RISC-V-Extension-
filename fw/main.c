@@ -79,7 +79,7 @@ int main(void)
         uart_puts("\n");
 
         count++;
-        delay(400000u);   /* ~0.5 s at 50 MHz */
+        delay(400000u);   /* measured ~110 ms/tick on hardware */
     }
 
     return 0;
