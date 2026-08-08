@@ -20,3 +20,7 @@ vendor/
 
 # GUI project (regenerate with scripts/create_gui_project.tcl)
 vivado_gui/
+
+# Measurement outputs
+results/
+fw/build_info.txt

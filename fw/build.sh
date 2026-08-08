@@ -1,11 +1,28 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Build the bring-up firmware and emit firmware.mem for $readmemh.
+# Build a firmware program and emit the four byte-lane images for $readmemh.
+#
+#   ./build.sh            # builds bench (the measurement harness)
+#   ./build.sh main       # builds the hello-world bring-up firmware
+#   OPT=-O3 ./build.sh    # override optimisation level
+#
+# The optimisation level is part of the measurement: it changes the instruction
+# mix, so it is recorded in build_info.txt next to the artefacts and echoed by
+# run_bench.py into the results file.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
+
+PROG="${1:-bench}"
+OPT="${OPT:--O2}"
+
+if [ ! -f "$PROG.c" ]; then
+    echo "no such program: $PROG.c" >&2
+    echo "available: $(ls *.c | sed 's/\.c$//' | tr '\n' ' ')" >&2
+    exit 1
+fi
 
 CROSS="${CROSS:-$HOME/tools/xpack-riscv-none-elf-gcc-13.2.0-2/bin/riscv-none-elf}"
 CC="${CROSS}-gcc"
@@ -13,12 +30,19 @@ OBJCOPY="${CROSS}-objcopy"
 OBJDUMP="${CROSS}-objdump"
 SIZE="${CROSS}-size"
 
-# CV32E40X is RV32IMC with Zicsr. -Os keeps the image inside 32 KB with room to spare.
-CFLAGS="-march=rv32imc_zicsr -mabi=ilp32 -Os -g -ffreestanding -fno-builtin \
-        -Wall -Wextra -nostdlib -nostartfiles -Wl,--gc-sections -Wl,-Map=firmware.map"
+# CV32E40X is RV32IMC with Zicsr.
+# -lgcc is required even with -nostdlib: 64-bit division (uart_put_u64) lowers
+# to __udivdi3, which lives in libgcc.
+ARCH="-march=rv32imc_zicsr -mabi=ilp32"
+CFLAGS="$ARCH $OPT -g -ffreestanding -fno-builtin -Wall -Wextra -I."
+LDFLAGS="-nostdlib -nostartfiles -Wl,--gc-sections -Wl,-Map=firmware.map -T link.ld"
 
-echo "[fw] compiling"
-"$CC" $CFLAGS -T link.ld crt0.S main.c -o firmware.elf
+SRCS="crt0.S lib/io.c lib/perf.c $PROG.c"
+
+echo "[fw] program=$PROG opt=$OPT"
+echo "[fw] compiling: $SRCS"
+# shellcheck disable=SC2086
+"$CC" $CFLAGS $LDFLAGS $SRCS -o firmware.elf -lgcc
 
 echo "[fw] objcopy"
 "$OBJCOPY" -O binary firmware.elf firmware.bin
@@ -30,33 +54,42 @@ import struct
 with open("firmware.bin", "rb") as f:
     blob = f.read()
 
-# Pad to a whole number of 32-bit words.
 if len(blob) % 4:
     blob += b"\x00" * (4 - len(blob) % 4)
 
 MEM_WORDS = 8192
 words = struct.unpack("<%dI" % (len(blob) // 4), blob)
 if len(words) > MEM_WORDS:
-    raise SystemExit("firmware is %d words, exceeds %d-word BRAM" % (len(words), MEM_WORDS))
+    raise SystemExit(
+        "firmware is %d words (%d bytes), exceeds the %d-word BRAM"
+        % (len(words), len(blob), MEM_WORDS))
 
 # The SoC RAM is four byte-wide arrays (see a7lite_soc_top.sv), so emit one
 # image per byte lane. Lane n holds bits [8n+7 : 8n] of each word.
-# Every entry is written so the BRAM initialisation is fully specified rather
-# than leaving the tail X in simulation.
 for lane in range(4):
     with open("firmware_b%d.mem" % lane, "w") as f:
         for i in range(MEM_WORDS):
             w = words[i] if i < len(words) else 0
             f.write("%02x\n" % ((w >> (8 * lane)) & 0xFF))
 
-# Word-wide image kept for inspection and for any future simulation testbench.
 with open("firmware.mem", "w") as f:
     for i in range(MEM_WORDS):
         f.write("%08x\n" % (words[i] if i < len(words) else 0))
 
-print("[fw] %d instruction/data words, %d bytes -> firmware_b{0..3}.mem" % (len(words), len(blob)))
+print("[fw] %d words, %d bytes, %.1f%% of BRAM"
+      % (len(words), len(blob), 100.0 * len(words) / MEM_WORDS))
 PY
 
 "$SIZE" firmware.elf
 "$OBJDUMP" -d firmware.elf > firmware.dis
-echo "[fw] done -> firmware.mem, firmware.dis"
+
+# Recorded so a results file can always be traced back to what produced it.
+{
+    echo "program=$PROG"
+    echo "opt=$OPT"
+    echo "arch=$ARCH"
+    echo "cc=$("$CC" -dumpversion)"
+    echo "built=$(date -Is)"
+} > build_info.txt
+
+echo "[fw] done -> firmware_b{0..3}.mem, firmware.dis, build_info.txt"

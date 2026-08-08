@@ -92,6 +92,39 @@ right — that is exactly the failure mode LED2 exists to rule out.
 - CV-X-IF is instantiated and tied off to "always reject" with `X_EXT = 0`. The port is
   present and correctly typed, ready for the accelerator phase.
 
+## Measurement infrastructure
+
+Cycle, instruction and hardware-event measurement is scripted end to end:
+
+```bash
+./scripts/run_bench.py --tag baseline        # build -> synth -> program -> capture -> parse
+vivado -mode batch -source scripts/report_power.tcl
+```
+
+See [doc/MEASUREMENT.md](doc/MEASUREMENT.md) for the counter map, the
+`mcountinhibit` trap that freezes all counters out of reset, and what each power
+number is allowed to claim.
+
+### Baseline (2026-08-09, -O2, 50 MHz)
+
+| kernel | cycles | instret | IPC | loads | stores |
+|---|---|---|---|---|---|
+| `nop` | 0 | 0 | - | 0 | 0 |
+| `memcpy32` | 199 | 135 | 0.678 | 33 | 1 |
+| `dot_i8` | 2312 | 1801 | 0.779 | 513 | 1 |
+| `gemm_i8` | 5025 | 4002 | 0.796 | 1025 | 1 |
+| `ssm_scan_q15` | 11201 | 9669 | 0.863 | 2084 | 532 |
+
+`ssm_scan_q15` (T=32, N=16) is the target kernel: 21.9 cycles and 18.9
+instructions per inner iteration to perform roughly 8 ops of real arithmetic, so
+**~58% of the instruction stream is addressing and loop overhead**. That is the
+headroom a CV-X-IF instruction is meant to reclaim.
+
+**`ld_stall` and `wb_data_stall` are 0 on every kernel, and that is correct**: the
+BRAM is zero-wait-state and structurally cannot stall. There is no memory
+bottleneck on this platform for an accelerator to remove, so any speedup measured
+here is a lower bound relative to a realistic memory system.
+
 ## Bring-up result (verified 2026-08-09)
 
 Hardware, not simulation: `xc7a35t_0` via Digilent `210241416548`, DONE = 1.
