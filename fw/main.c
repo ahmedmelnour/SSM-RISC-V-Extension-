@@ -30,7 +30,7 @@ int main(void)
     uart_puts("\n");
     uart_puts("=====================================\n");
     uart_puts(" CV32E40X alive on MicroPhase A7-Lite\n");
-    uart_puts(" RV32IMC @ 50 MHz, 32KB BRAM\n");
+    uart_puts(" RV32IMC @ 50 MHz, 128KB BRAM\n");
     uart_puts("=====================================\n");
 
     for (;;) {

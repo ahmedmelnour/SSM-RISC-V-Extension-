@@ -43,7 +43,7 @@ re-running both `fw/build.sh` and `scripts/build.tcl`.
 
 | Address | Width | Description |
 |---|---|---|
-| `0x0000_0000`–`0x0000_7FFF` | 32 KB | unified instruction/data RAM (BRAM) |
+| `0x0000_0000`–`0x0001_FFFF` | 128 KB | unified instruction/data RAM (BRAM) |
 | `0x1000_0000` | w | UART TX data (write a byte to send) |
 | `0x1000_0004` | r | UART status, bit 0 = busy |
 | `0x1000_0008` | rw | GPIO out, bit 0 drives LED2 |

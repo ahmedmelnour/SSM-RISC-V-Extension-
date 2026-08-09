@@ -24,3 +24,19 @@ vivado_gui/
 # Measurement outputs
 results/
 fw/build_info.txt
+
+# Python model-development environment and datasets (see py/README.md).
+# The venv is bootstrapped, not vendored; MIT-BIH is re-downloadable from PhysioNet.
+py/venv/
+py/data/
+py/__pycache__/
+py/**/__pycache__/
+
+# Generated golden vectors for the host differential test (429 KB, regenerate
+# with py/export_c.py --host-beats). fw/golden.h is committed instead: it is small
+# and is the exact vector set that passed the hardware gate.
+py/golden_host.h
+
+# Vivado byproduct: re-dirties on every build and describes design_1, not this
+# design. Untracked with git rm --cached.
+clockInfo.txt

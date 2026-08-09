@@ -4,7 +4,7 @@
 // Minimal SoC around CV32E40X for MicroPhase A7-Lite (XC7A35T-2FGG484) bring-up.
 //
 // Memory map
-//   0x0000_0000 - 0x0000_7FFF   32 KB unified instruction/data RAM (BRAM)
+//   0x0000_0000 - 0x0001_FFFF   128 KB unified instruction/data RAM (BRAM)
 //   0x1000_0000                 UART TX data   (write byte)
 //   0x1000_0004                 UART status    (bit0 = busy, read-only)
 //   0x1000_0008                 GPIO out       (bit0 -> LED2)
@@ -182,25 +182,36 @@ module a7lite_soc_top
   );
 
   // ---------------------------------------------------------------------------
-  // Unified 32 KB RAM, inferred as true dual-port BRAM.
+  // Unified 128 KB RAM, inferred as true dual-port BRAM.
   //   port A: instruction fetch (read only)
   //   port B: data load/store
-  // 8192 words -> word index is addr[14:2].
+  // 32768 words -> word index is addr[16:2], i.e. 15 bits.
+  //
+  // Sized at 128 KB (32 of the 50 RAMB36 on this part) so that an INT8 SSM model
+  // of a few tens of thousands of parameters fits alongside code and stack. At
+  // the original 32 KB a 20k-parameter model was already at the ceiling.
   //
   // The memory is written as four independent byte-wide arrays rather than one
-  // 32-bit array with byte enables. With a single 8192x32 array Vivado reports
+  // 32-bit array with byte enables. With a single MEM_WORDSx32 array Vivado
+  // reports
   //   [Synth 8-6841] ... cannot take advantage of ByteWide feature and is
   //   implemented with single write enable per RAM
-  // because the 13-bit address exceeds its byte-write-enable threshold of 12.
+  // because the word address exceeds its byte-write-enable threshold of 12 bits.
   // It then slices the RAM into 4-bit-wide primitives with one write enable
   // each, which cannot express a byte write at all -- so `sb`/`sh` would corrupt
   // the neighbouring bytes of the word. Splitting the lanes explicitly makes
   // each write enable a whole-RAM enable by construction, which is exactly what
   // the hardware supports, instead of depending on a `ram_decomp` attribute to
   // steer inference.
+  //
+  // The index width is derived from MEM_WORDS rather than written out, so the
+  // array and the slice that addresses it cannot drift apart. An earlier,
+  // abandoned SoC indexed an 8192-entry array with addr[16:2] and silently
+  // aliased -- see doc/BRINGUP.md 10.2.
   // ---------------------------------------------------------------------------
-  localparam int MEM_WORDS = 8192;
-  localparam int AW_HI     = 2 + $clog2(MEM_WORDS) - 1;   // = 14
+  localparam int MEM_WORDS = 32768;
+  localparam int AW_HI     = 2 + $clog2(MEM_WORDS) - 1;   // = 16
+  localparam int IDX_W     = $clog2(MEM_WORDS);           // = 15
 
   (* ram_style = "block" *) logic [7:0] mem0 [0:MEM_WORDS-1];
   (* ram_style = "block" *) logic [7:0] mem1 [0:MEM_WORDS-1];
@@ -217,7 +228,7 @@ module a7lite_soc_top
   // ---- port A: instruction ----
   assign instr_gnt = instr_req;   // single-cycle address acceptance
 
-  logic [12:0] ia;
+  logic [IDX_W-1:0] ia;
   assign ia = instr_addr[AW_HI:2];
 
   always_ff @(posedge clk_i) begin
@@ -239,7 +250,7 @@ module a7lite_soc_top
   logic [31:0] mem_rdata;
 
   // ---- port B: data ----
-  logic [12:0] da;
+  logic [IDX_W-1:0] da;
   assign da = data_addr[AW_HI:2];
 
   always_ff @(posedge clk_i) begin

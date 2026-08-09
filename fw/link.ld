@@ -1,5 +1,6 @@
 /* ---------------------------------------------------------------------------
- * link.ld -- single 32 KB RAM at 0x0000_0000, matching the SoC memory map.
+ * link.ld -- single 128 KB RAM at 0x0000_0000, matching the SoC memory map.
+ * LENGTH must track MEM_WORDS in rtl/a7lite_soc_top.sv and fw/build.sh.
  * Code, data and stack all live in the same BRAM. The core boots at 0x0.
  * --------------------------------------------------------------------------- */
 
@@ -8,7 +9,7 @@ ENTRY( _start )
 
 MEMORY
 {
-  RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 32K
+  RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 128K
 }
 
 SECTIONS

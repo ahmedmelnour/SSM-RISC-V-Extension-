@@ -57,7 +57,7 @@ with open("firmware.bin", "rb") as f:
 if len(blob) % 4:
     blob += b"\x00" * (4 - len(blob) % 4)
 
-MEM_WORDS = 8192
+MEM_WORDS = 32768   # must match MEM_WORDS in rtl/a7lite_soc_top.sv and LENGTH in link.ld
 words = struct.unpack("<%dI" % (len(blob) // 4), blob)
 if len(words) > MEM_WORDS:
     raise SystemExit(
