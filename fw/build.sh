@@ -39,6 +39,18 @@ LDFLAGS="-nostdlib -nostartfiles -Wl,--gc-sections -Wl,-Map=firmware.map -T link
 
 SRCS="crt0.S lib/io.c lib/perf.c $PROG.c"
 
+# gate.c is the week-2 correctness check and needs the model itself. It is not
+# linked into the other programs: ssm_model.c carries ~19 KB of .bss and pulls
+# in model_data.h, which would bloat every build for nothing.
+if [ "$PROG" = "gate" ]; then
+    if [ ! -f model_data.h ] || [ ! -f golden.h ]; then
+        echo "gate needs model_data.h and golden.h -- generate them first:" >&2
+        echo "  py/venv/bin/python py/export_c.py --ckpt py/data/model_v3.pt" >&2
+        exit 1
+    fi
+    SRCS="$SRCS ssm_model.c"
+fi
+
 echo "[fw] program=$PROG opt=$OPT"
 echo "[fw] compiling: $SRCS"
 # shellcheck disable=SC2086
