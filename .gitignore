@@ -1,0 +1,126 @@
+# .gitignore — SSM RISC-V Extension
+#
+# Rule for adding anything here: could I regenerate this exactly, from something
+# that IS committed? If yes, ignore it — and make sure the generating script is
+# committed too.
+#
+# The deliberate exception: generated files that are the EVIDENCE for a claim
+# (exported weights, golden vectors that passed a hardware gate) get committed,
+# because "regenerate it from a checkpoint that isn't in the repo" is not
+# reproducible. Those are listed as negations at the bottom.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Obsidian — per-machine editor config, not part of the project.
+# Ignored wholesale: app/appearance/core-plugins are personal settings and
+# themes/ carries a 40 KB CSS. The vault still works locally; nothing here is
+# needed to build or reproduce the project.
+# ─────────────────────────────────────────────────────────────────────────────
+.obsidian/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Vivado (Stage 1 onward)
+#
+# Project mode keeps state in .runs/.cache/.sim, which regenerate from the
+# sources. The .xpr and your .sv/.xdc are the real content. These directories
+# reach several GB, so this block matters more than any other.
+# ─────────────────────────────────────────────────────────────────────────────
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.gen/
+.Xil/
+*.jou
+*.log
+*.str
+*.wdb
+*.pb
+vivado_pid*
+hs_err_pid*
+
+# Non-project build outputs (Stage 5, scripts/build.tcl)
+build/
+
+# GUI project, if you generate one from a script (scripts/create_gui_project.tcl)
+vivado_gui/
+
+# Vivado byproduct: re-dirties on every build and describes design_1, not this
+# design. If it ever gets committed by accident: git rm --cached clockInfo.txt
+clockInfo.txt
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Firmware (Stage 3 onward) — all regenerate with fw/build.sh
+#
+# Keep the SOURCES (crt0.S, main.c, link.ld, build.sh) and drop the outputs.
+# ─────────────────────────────────────────────────────────────────────────────
+fw/*.elf
+fw/*.bin
+fw/*.o
+fw/*.map
+fw/*.dis
+fw/*.mem
+fw/build_info.txt
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Upstream RISC-V core (Stage 4)
+#
+# Cloned, not vendored into history. This is only safe to ignore because
+# scripts/fetch_core.sh pins the exact revision — if that script is missing or
+# unpinned, this line is reckless rather than clean.
+# ─────────────────────────────────────────────────────────────────────────────
+vendor/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Measurement outputs (Stage 5)
+#
+# Timestamped, and every file carries its own .meta with git rev and compiler
+# flags. Attach the specific captures that back a headline claim to a GitHub
+# Release instead of committing them.
+# ─────────────────────────────────────────────────────────────────────────────
+results/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Python model development (Stage 6 onward)
+#
+# venv is bootstrapped (see py/README.md); MIT-BIH is re-downloadable from
+# PhysioNet (~90 MB); checkpoints are large and regenerable from train.py.
+# ─────────────────────────────────────────────────────────────────────────────
+py/venv/
+py/data/
+**/__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Large generated host-test vectors (regenerate: py/export_c.py --host-beats)
+py/golden_host.h
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Editor / OS noise
+#
+# Personal preferences belong in ~/.gitignore_global, not here — a project
+# .gitignore should describe the PROJECT, so it makes sense to a collaborator.
+# These few are common enough to be worth catching locally.
+# ─────────────────────────────────────────────────────────────────────────────
+*~
+*.swp
+*.swo
+.DS_Store
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Deliberate exceptions — generated, but committed as EVIDENCE
+#
+# These are the exact artefacts behind hardware claims. Regenerating them
+# depends on a checkpoint in py/data/, which is ignored — so committing them is
+# what makes a "bit-exact on hardware" claim reproducible.
+#
+# NOTE: as written, these two negations are no-ops — nothing above ignores .h
+# files in fw/ (only .elf/.bin/.o/.map/.dis/.mem). They are here as a statement
+# of intent, and as insurance if a broader rule like `fw/*` is ever added.
+# Verify with:  git check-ignore -q fw/golden.h ; echo $?     # 1 = not ignored
+#
+# If you do add a broader rule, it must come BEFORE these lines: last match wins,
+# and a negation cannot rescue a file inside an already-excluded *directory*.
+# ─────────────────────────────────────────────────────────────────────────────
+!fw/golden.h
+!fw/model_data.h
