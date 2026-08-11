@@ -1,0 +1,5 @@
+program=main
+opt=-Os
+arch=-march=rv32imc_zicsr -mabi=ilp32
+cc=13.2.0
+built=2026-08-12T01:48:25+08:00
