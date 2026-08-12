@@ -1,7 +1,8 @@
 /* ---------------------------------------------------------------------------
- * link.ld -- single 32 KB RAM at 0x8000_0000, matching the SoC memory map.
+ * link_sim.ld -- GENERATED from link.ld; RAM relocated to 0x8000_0000 for Spike.
  * LENGTH must track MEM_WORDS in rtl/a7lite_soc_top.sv and fw/build.sh.
- * Code, data and stack all live in the same BRAM. The core boots at 0x0.
+ * Simulation only: Spike boots at 0x1000 and maps a boot ROM there, so a RAM
+ * region based at 0x0 would collide with it. Not the SoC memory map.
  * --------------------------------------------------------------------------- */
 
 OUTPUT_ARCH( "riscv" )

@@ -30,14 +30,26 @@ NM="${CROSS}-nm"
 
 # CV32E40X is RV32IMC with Zicsr.
 ARCH="-march=rv32imc_zicsr -mabi=ilp32"
-CFLAGS="$ARCH $OPT -g -ffreestanding -fno-builtin -Wall -Wextra -I."
-LDFLAGS="-nostdlib -nostartfiles -Wl,--gc-sections -Wl,-Map=firmware.map -T link.ld"
+# -ffunction-sections/-fdata-sections put every function and object in its own
+# section, which is what makes the linker's --gc-sections able to drop unused
+# ones. Without them --gc-sections is close to a no-op: everything is in one
+# .text and the linker can only discard whole sections.
+CFLAGS="$ARCH $OPT -g -ffreestanding -fno-builtin -Wall -Wextra -I. \
+-ffunction-sections -fdata-sections"
+LDFLAGS="-nostdlib -nostartfiles -Wl,--gc-sections -Wl,-Map=firmware.ld.map -T link.ld"
 
-SRCS="crt0.S $PROG.c"
+# RV32 has no 64-bit divide instruction, so GCC lowers the u64 division in
+# uart_put_u64 into calls to __udivdi3/__umoddi3. Those live in libgcc, which
+# -nostdlib also excludes -- hence -lgcc, placed after the objects that need it.
+LIBS="-lgcc"
+
+# lib/io.c holds uart_puts/led_set as real functions, not inline in io.h, so it
+# has to be compiled in -- omitting it fails at link, not at compile.
+SRCS="crt0.S lib/io.c $PROG.c"
 
 echo "[fw] program=$PROG opt=$OPT"
 # shellcheck disable=SC2086
-"$CC" $CFLAGS $LDFLAGS $SRCS -o firmware.elf
+"$CC" $CFLAGS $LDFLAGS $SRCS -o firmware.elf $LIBS
 
 echo "[fw] objcopy"
 "$OBJCOPY" -O binary firmware.elf firmware.bin
@@ -53,6 +65,7 @@ if len(blob) % 4:
     blob += b"\x00" * (4 - len(blob) % 4)
 
 MEM_WORDS = 8192   # must match MEM_WORDS in the SoC top and LENGTH in link.ld
+                   # 8192 words * 4 B = 32 KB
 words = struct.unpack("<%dI" % (len(blob) // 4), blob)
 if len(words) > MEM_WORDS:
     raise SystemExit(
@@ -88,4 +101,20 @@ PY
     echo "built=$(date -Is)"
 } > build_info.txt
 
-echo "[fw] done -> firmware_b{0..3}.mem, firmware.dis, build_info.txt"
+# The RTL takes the .mem paths from this generated header rather than from a
+# Vivado -D define, so the paths are regenerated with the files they point at and
+# cannot go stale. Absolute, because $readmemh resolves relative paths against the
+# synth/sim run directory, not the project root.
+#
+# The name must stay in step with the `include in rtl/a7lite_soc_top.sv.
+mkdir -p ../build
+{
+    echo '`ifndef FW_MEM_PATH_SVH'
+    echo '`define FW_MEM_PATH_SVH'
+    for l in 0 1 2 3; do
+        echo "\`define FW_MEM_B$l \"$HERE/firmware_b$l.mem\""
+    done
+    echo '`endif'
+} > ../build/fw_mem_path.svh
+
+echo "[fw] done -> firmware_b{0..3}.mem, firmware.dis, build_info.txt, ../build/fw_mem_path.svh"

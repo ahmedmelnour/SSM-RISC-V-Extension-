@@ -1,7 +1,0 @@
-00000000 T _start
-00000034 T main
-00000040 B result
-00000040 B _sbss
-00000044 B _ebss
-00000840 D __global_pointer$
-00008000 B _stack_top
