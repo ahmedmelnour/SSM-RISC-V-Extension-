@@ -1,0 +1,21 @@
+timestamp=20260813_100948
+tag=gate-transplant
+cfg.program=gate
+cfg.d_model=32
+cfg.d_state=16
+cfg.layers=2
+cfg.timesteps=288
+cfg.beats=9
+cfg.mcountinhibit=0x00000000
+git_rev=7e131ef
+git_dirty=True
+fw.program=gate
+fw.opt=-O2
+fw.arch=-march=rv32imc_zicsr -mabi=ilp32
+fw.cc=13.2.0
+fw.built=2026-08-12T16:13:04+08:00
+util.Slice_LUTs=3724
+util.Slice_Registers=2299
+util.Slice_Registers=2299
+util.Block_RAM_Tile=32
+util.DSPs=3

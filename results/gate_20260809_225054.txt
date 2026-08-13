@@ -1,0 +1,32 @@
+============================================================
+port=/dev/ttyUSB1 baud=115200 window=90.0s bytes=450
+============================================================
+
+#PERF,1
+#CFG,program,gate
+#CFG,d_model,32
+#CFG,d_state,16
+#CFG,layers,2
+#CFG,timesteps,288
+#CFG,beats,9
+#CFG,mcountinhibit,0x00000000
+#COLS,beat,label,expect,got,exact
+#DATA,0,0,0,0,1
+#DATA,1,0,0,0,1
+#DATA,2,0,0,0,1
+#DATA,3,1,0,0,1
+#DATA,4,1,0,0,1
+#DATA,5,1,0,0,1
+#DATA,6,2,2,2,1
+#DATA,7,2,2,2,1
+#DATA,8,2,2,2,1
+#PERF_CYCLES,33874576
+#PERF_INSTRET,27155608
+#RESULT,exact,9,of,9
+#RESULT,class_disagreements,0
+#GATE,PASS
+#END
+
+============================================================
+raw hex (first 64): 0d 0a 23 50 45 52 46 2c 31 0d 0a 23 43 46 47 2c 70 72 6f 67 72 61 6d 2c 67 61 74 65 0d 0a 23 43 46 47 2c 64 5f 6d 6f 64 65 6c 2c 33 32 0d 0a 23 43 46 47 2c 64 5f 73 74 61 74 65 2c 31 36 0d 0a
+RESULT: OK -- found '#GATE' (printable 100%)
