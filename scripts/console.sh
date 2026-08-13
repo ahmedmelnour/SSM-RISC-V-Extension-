@@ -18,10 +18,30 @@ BAUD="${BAUD:-115200}"
 # ---- pick a port ----------------------------------------------------------
 port="${1:-}"
 
+# Prefer the CH340 (1a86) by vendor id rather than taking the first tty. With two
+# USB serial devices on the bus, ttyUSB0 is not reliably the UART, and picking the
+# wrong one looks exactly like dead firmware. See doc/BRINGUP.md section 13.
 if [ -z "$port" ]; then
     for p in /dev/ttyUSB* /dev/ttyACM*; do
         [ -e "$p" ] || continue        # unmatched globs stay literal
+        vid=$(udevadm info -q property -n "$p" 2>/dev/null \
+              | sed -n 's/^ID_VENDOR_ID=//p')
+        if [ "$vid" = "1a86" ]; then
+            port="$p"
+            echo "[console] $p is the CH340 (vid 1a86)" >&2
+            break
+        fi
+    done
+fi
+
+# Nothing identified as a CH340 -- fall back to the first port, but say so. A
+# silent console after this is far more likely to be the wrong device than dead
+# firmware.
+if [ -z "$port" ]; then
+    for p in /dev/ttyUSB* /dev/ttyACM*; do
+        [ -e "$p" ] || continue
         port="$p"
+        echo "[console] warning: no CH340 found, falling back to $p" >&2
         break
     done
 fi
