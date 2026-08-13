@@ -215,17 +215,23 @@ all LVCMOS33.
 
 ### 10.1 Three places define the memory size
 
-The size is written down three times and nothing enforces agreement:
+The size is written down four times and nothing enforces agreement:
 
 | Where | What |
 |---|---|
 | `rtl/a7lite_soc_top.sv` | `MEM_WORDS` |
 | `fw/build.sh` | `MEM_WORDS` (lines emitted per lane) |
 | `fw/link.ld` | `LENGTH` |
+| `fw/link_sim.ld` | `LENGTH` — the Spike build, easy to forget |
 
-They're currently all 32 KB — 8192 words. If I ever widen the BRAM, all three
-change together. The comment in `build.sh` says as much and it still drifted
-apart on me once, so it's worth checking rather than trusting.
+`link_sim.ld` is the one that got missed during the widening in §10.3: it sat at
+32K for three days while everything else was at 128K. It only bites when you next
+run Spike, which is exactly when you are debugging something else.
+
+They are all 128 KB — 32768 words — since the widening in §10.3. They started at
+32 KB / 8192 words. All three change together. The comment in `build.sh` says as
+much and it still drifted apart on me once, so it's worth checking rather than
+trusting.
 
 ### 10.2 The aliasing incident
 
@@ -254,6 +260,28 @@ written out by hand — the array and the slice that addresses it can't disagree
 The remaining exposure is the linker script, which the hardware has no way to
 check.
 
+### 10.3 Widening 32 KB → 128 KB
+
+32 KB was the whole budget for code *and* data *and* stack, against a model of a
+few tens of thousands of INT8 parameters. `bench.c` alone took 6.7 KB; a 20k-param
+model was already at the ceiling and 50k did not fit. The gate firmware settles it:
+20,597 B of text plus 19,551 B of `.bss` is 40 KB before the stack is touched, so
+it cannot run in 32 KB at all.
+
+`MEM_WORDS` went 8192 → 32768 in all three places from §10.1. Verified three ways
+rather than just synthesised:
+
+- 32 RAMB36 exactly (64% of the 50 on this part), as predicted. LUTs went *down* 9.
+- WNS **+2.360 ns** against the 32 KB build's +1.660 ns. No timing cost — the
+  critical path was never the memory address decode. Treat that as placement noise
+  as much as a real gain; it is not a new ceiling either way.
+- On hardware all five `bench.c` kernels reproduced the 32 KB numbers
+  **bit-identically** — same cycles, instret, loads, stores (`results/mem128k_*`).
+  That is what keeps measurements from before the widening comparable with
+  everything after it.
+
+Budget now: 128 KB for code + data + stack, 18 RAMB36 spare for the accelerator.
+
 ---
 
 ## 11. Byte-lane memory images
@@ -272,8 +300,9 @@ can't express a byte write at all — so `sb`/`sh` would corrupt the neighbourin
 bytes of the word. Splitting the lanes explicitly makes every write enable a
 whole-RAM enable by construction.
 
-It works. Synthesis infers 4 × (8K × 8) true dual-port BRAMs, 8 RAMB36 total, no
-`8-6841` warning.
+It works. Synthesis infers four true dual-port BRAMs with no `8-6841` warning —
+4 × (8K × 8) and 8 RAMB36 at the original 32 KB, and 4 × (32K × 8) and 32 RAMB36
+after the widening in §10.3.
 
 `build.sh` splits the binary little-endian into `firmware_b0..b3.mem`. The check
 that catches a byte-order mistake immediately:
@@ -289,6 +318,12 @@ garbage and I'd be debugging the SoC instead of the script.
 ---
 
 ## 12. Serial console
+
+> **Resolved.** This section describes the state before the board's own UART
+> connector was cabled. Once it was, a second USB serial device appeared — a
+> CH340 (`1a86:7523`) — and the console works. What replaced the original problem
+> is a worse one, because it fails silently: with *two* USB serial devices on the
+> bus, `/dev/ttyUSB0` is no longer reliably the UART. See §13.
 
 There is no CH340 on the USB bus. The only FPGA-related device is
 
@@ -316,13 +351,195 @@ has three separate indicators.
 
 ---
 
+## 13. Hard-won facts
+
+Each of these cost real time or would have produced silently wrong results. They
+came out of the work up to the week-2 gate; §1–§12 above are the bring-up log
+proper, this is the residue that does not belong to any one section.
+
+### Toolchain and Vivado
+
+**Vivado shows zero parts if the licence has an Alveo feature.** `~/.Xilinx/*.lic`
+must not contain `INCREMENT Vivado_Alveo_Package`; it restricts device support to
+Alveo and makes `get_parts` return 0 — which looks exactly like missing board
+files. Already stripped. Check with `puts [llength [get_parts -quiet]]`, expect 289.
+
+**There is no Vivado board file for the A7-Lite.** Select the *part*
+(`xc7a35tfgg484-2L`) directly. This is permanent, not a setup fault. Don't go
+looking in the Vivado Store.
+
+**`vivado` is not on `PATH` in a fresh shell.** Everything needs
+`source /opt/Xilinx/2026.1/Vivado/settings64.sh` first. If you redirect the log,
+`vivado: command not found` looks exactly like a build that ran and produced
+nothing — while a *stale* `build/a7lite_soc.bit` sits there ready to be programmed.
+`scripts/run_bench.py` is immune: it invokes Vivado by absolute path.
+
+**The vendor clock gate is simulation-only.** `vendor/cv32e40x/bhv/cv32e40x_sim_clock_gate.sv`
+models the gate with an `always_latch` and infers a latch on a gated clock net.
+`rtl/cv32e40x_clock_gate.sv` replaces it with a BUFGCE under the same module name,
+and `bhv/` is deliberately not in the project. `build.tcl` fails the build if any
+latch is inferred, so a wrong pickup cannot ship silently.
+
+### Pinout
+
+**`UART_TX` = `V2`, confirmed empirically.** An earlier attempt moved it to `U2`,
+which is an FPGA *input* driven by the CH340 — driving it causes bus contention.
+The manual separately lists a flash at "Position U2"; that is a component
+designator and has nothing to do with FPGA ball U2. Do not conflate them.
+
+Clock `J19` (50 MHz) · `UART_TX` `V2` · `UART_RX` `U2` · LED1 `M18` · LED2 `N18`.
+
+**7-series needs `CFGBVS` and `CONFIG_VOLTAGE`** in the XDC or implementation
+fails DRC `NSTD-1`/`UCIO-1`. Both are set in `constr/a7lite.xdc`.
+
+**`/dev/ttyUSB0` is not necessarily the UART.** The board presents *two* USB
+serial devices: an FT232H (`0403:6014`) for JTAG and a CH340 (`1a86:7523`) for the
+UART. Which gets `ttyUSB0` depends on enumeration order, so it changes between
+boots and between cable orders. Capturing on the FT232H gives
+`RESULT: SILENT -- no bytes received`, which looks exactly like dead firmware, a
+wrong baud or a bad pin constraint — and costs a full reprogram cycle to rule out,
+because the firmware prints once at reset and there is no reset button. Resolve by
+vendor ID rather than trusting the number:
+
+```bash
+for d in /sys/bus/usb-serial/devices/*; do
+    n=$(basename "$d")
+    udevadm info -q property -n /dev/$n | grep -q 1a86 && echo "UART is /dev/$n"
+done
+```
+
+**This is not hypothetical and it is not only a per-boot problem.** On 2026-08-12
+the CH340 re-enumerated mid-session — USB device number 058 → 059 — and its tty
+moved from `ttyUSB0` to `ttyUSB1` with nothing else changing. A capture that had
+worked minutes earlier died with `FileNotFoundError: /dev/ttyUSB0`. Had the FT232H
+happened to hold a tty at that moment, it would have been worse: a clean `SILENT`
+result on the wrong device, indistinguishable from dead firmware.
+
+`scripts/capture_uart.py` and `scripts/run_bench.py` now default to `--port auto`,
+which walks `/sys/class/tty/*/device` up to the USB node and matches `idVendor`
+against `1a86`. `scripts/console.sh` prefers the CH340 the same way and warns when
+it has to fall back. Pass `--port` explicitly only to override.
+
+### Measurement
+
+**CV32E40X disables all performance counters out of reset.** `mcountinhibit`
+resets to "all inhibited" to save power, so `mcycle`/`minstret` read a frozen
+constant until software clears it — indistinguishable from a broken harness.
+`perf_init()` handles it, and the firmware echoes the register back so a run can
+never be silently invalid.
+
+**`mhpmevent3` is an event *bitmask*, not an index.** Multiple bits OR together
+and there is at most one increment per cycle, so it is not a sum. Use one event
+per counter if you want exact counts.
+
+**Two processes reading the same tty split the byte stream between them.** Running
+`run_bench.py` and `capture_uart.py` against the same port at once does not give
+each a copy — the kernel hands each byte to whichever reader asks first, so both
+get a shredded subset. It does not look like a collision: it looks like corrupted
+output from a broken design. Real example, one line from each capture of the same
+run:
+
+```
+#CFG,mcountinhi,expect,got,exact      <- two lines with chunks stolen mid-stream
+#RESULT,exact,9,o   +   f,9           <- "#RESULT,exact,9,of,9" torn in half
+```
+
+Both captures also showed `RESULT: OK -- found '#GATE'`, so neither reported a
+problem. One reader at a time.
+
+**`--expect '#GATE'` matches `#GATE,FAIL` as happily as `#GATE,PASS`.** The capture
+script only reports whether the *marker* arrived; the verdict is a separate string.
+Read the `#RESULT` and `#GATE` lines, don't trust the `RESULT: OK` summary line —
+that one means "the UART works", not "the gate passed".
+
+**Code layout moves the cycle count by ~6% at constant instruction count.** The same
+`gate.c`, same `-O2`, same core, same clock, compiled once with and once without
+`-ffunction-sections -fdata-sections`:
+
+| | with | without |
+|---|---|---|
+| cycles | 31,903,407 | 33,874,576 |
+| instret | 27,156,479 | 27,155,608 |
+| IPC | 0.851 | 0.802 |
+
+Instruction count identical to 0.003%, cycles **5.8% apart**, and each is
+reproducible to the digit on its own build — so it is deterministic, not noise. The
+cause is instruction-fetch alignment: `-ffunction-sections` relocates every
+function, and with RVC a hot loop starting on a 4-byte rather than a 2-byte
+boundary changes what the alignment buffer has to do. Over 27M instructions of
+tight scan loops that is ~2M cycles.
+
+This matters well beyond the gate: **a 6% swing can be manufactured by a compiler
+flag that has nothing to do with the accelerator.** Compile the baseline and the
+accelerated build identically, record the flags in every results `.meta`, and treat
+any speedup under ~1.1× as inside layout noise.
+
+**Calibrate overhead through the exact path you measure through, and per event.**
+Getting this wrong biased every event count by exactly +20 instructions. The sweep
+measures `instret` twice by independent means specifically so that class of bug
+shows up as a disagreement — keep that redundancy.
+
+### Model and quantization
+
+**A hardcoded shift constant sized for a worst case that never occurs is invisible
+until the scales around it get tight — then it dominates.** Three of them in
+`py/quantize.py` (`SV=5` in the LayerNorm variance, an unscaled `isqrt(var)`,
+`SP=6` in the scan) were harmless under a single global activation scale and became
+the *largest* error source the moment scales went per-tensor: implementing
+per-tensor scales first made float-vs-int agreement go **down**, 62% → 53%. Fixing
+the three constants took it to **97%** — worth far more than every activation scale
+put together. All three are now derived from `D`, `N` and the int32 bound. When a
+quantization change makes things worse, suspect the fixed shifts before the scales.
+
+**~99% is the ceiling with INT8 weights**, not a target to push past. Per-channel
+INT8 with *exact* activations measures 98.9%; the remaining gap is weight
+precision, not scales.
+
+**If saturation goes up when you add range, stop adding range.** Saturation counts
+are usually a symptom of upstream precision loss inflating values, not of the range
+being too small. `--headroom 1` pushed `y` saturation from 32% to 41%; the real
+fault was the LayerNorm variance shift. After fixing that, saturations went
+3.3M → **0** with no headroom at all.
+
+**Cheap in operations is not the same as cheap in bits.** A final LayerNorm before
+the head is ~0.01% of the op budget and never touches the scan — and it grew the
+residual stream **4.4×** (50.7 → 221.4), because the head reading the pooled vector
+directly is the only thing making weight decay pay for an unbounded stream.
+Agreement fell 97.3% → 96.4% and per-channel weight scales stopped helping at all.
+Reverted. The op-budget table is the right tool for deciding what to *accelerate*
+and the wrong tool for deciding what is safe to *add*.
+
+> Residue of that revert: `py/data/model_v2.pt` still carries the `norm_out.*`
+> keys, so loading it into the current `ECGNet` raises "Unexpected key(s) in
+> state_dict". `py/test_quantize.py` used to default to it and silently never ran.
+
+**Indexing `t` out of a `[B,T,D,N]` tensor inside a scan makes backward 14× forward.**
+The first `SelectiveSSM.forward` precomputed `a` for all timesteps then used
+`a[:, t]` in the loop. Forward 0.74 s, backward 10.56 s — each `select` backward
+allocates and zeros a gradient buffer the size of the *whole* tensor (67 MB at
+batch 256), 128 times per layer. Calling `.unbind(1)` once lowers it to a single
+stack in backward: 0.42 s, and an epoch went from ~1825 s to ~116 s. If the scan
+ever feels inexplicably slow again, look for a `[:, t]` on a large tensor first.
+
+**Never pass `--threads` above 4 to `py/train.py`.** At 8 threads training is
+**31× slower** while pegging every core. A run left at `os.cpu_count()` took five
+hours to reach epoch 2 of 20.
+
+**A rare class can stay flat until the LR anneals.** The S class read as pure
+noise through epoch 14, then jumped 12× at epoch 15. Do not conclude a class is
+unlearnable before the schedule finishes.
+
+---
+
 ## Quick reference
 
 ```bash
-cd fw && ./build.sh              # firmware + .mem + build/fw_mem_path.svh
-ls -la --time-style=+%H:%M fw/*.mem fw/main.c    # .mem must be newer than sources
+./fw/build.sh                    # bench + .mem + build/fw_mem_path.svh
+./fw/build.sh gate               # the week-2 correctness gate (needs the model)
+ls -la --time-style=+%H:%M fw/*.mem fw/gate.c    # .mem must be newer than sources
 spike -d --isa=rv32imc_zicsr firmware_sim.elf    # simulator (link_sim.ld build)
 ./scripts/console.sh             # serial console
+py/venv/bin/python scripts/capture_uart.py --seconds 90 --expect '#GATE'
 ```
 
 After changing firmware, re-run synthesis — not just implementation.
