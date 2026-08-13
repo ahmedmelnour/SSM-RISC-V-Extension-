@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Build the firmware and emit the four byte-lane images for $readmemh.
+# Build a firmware program and emit the four byte-lane images for $readmemh.
 #
-#   ./build.sh            # builds main.c
+#   ./build.sh            # builds bench (the measurement harness)
+#   ./build.sh main       # builds the hello-world bring-up firmware
+#   ./build.sh gate       # builds the week-2 correctness gate (needs the model)
 #   OPT=-O3 ./build.sh    # override optimisation level
 #
 # The optimisation level is part of the measurement: it changes the instruction
-# mix, so it is recorded in build_info.txt next to the artefacts.
+# mix, so it is recorded in build_info.txt next to the artefacts and echoed by
+# run_bench.py into the results file.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-PROG="${1:-main}"
-OPT="${OPT:--Os}"
+PROG="${1:-bench}"
+OPT="${OPT:--O2}"
 
 if [ ! -f "$PROG.c" ]; then
     echo "no such program: $PROG.c" >&2
+    echo "available: $(ls *.c | sed 's/\.c$//' | tr '\n' ' ')" >&2
     exit 1
 fi
 
@@ -43,11 +47,26 @@ LDFLAGS="-nostdlib -nostartfiles -Wl,--gc-sections -Wl,-Map=firmware.ld.map -T l
 # -nostdlib also excludes -- hence -lgcc, placed after the objects that need it.
 LIBS="-lgcc"
 
-# lib/io.c holds uart_puts/led_set as real functions, not inline in io.h, so it
-# has to be compiled in -- omitting it fails at link, not at compile.
-SRCS="crt0.S lib/io.c $PROG.c"
+# lib/io.c and lib/perf.c hold real functions (uart_puts/led_set, perf_init/
+# perf_measure*) rather than inlines in the headers, so they have to be compiled
+# in -- omitting one fails at LINK, not at compile, with "undefined reference to"
+# every extern the header declares. If you add a lib/*.c, add it here too.
+SRCS="crt0.S lib/io.c lib/perf.c $PROG.c"
+
+# gate.c is the week-2 correctness check and needs the model itself. It is not
+# linked into the other programs: ssm_model.c carries ~19 KB of .bss and pulls
+# in model_data.h, which would bloat every build for nothing.
+if [ "$PROG" = "gate" ]; then
+    if [ ! -f model_data.h ] || [ ! -f golden.h ]; then
+        echo "gate needs model_data.h and golden.h -- generate them first:" >&2
+        echo "  py/venv/bin/python py/export_c.py --ckpt py/data/model_v3.pt" >&2
+        exit 1
+    fi
+    SRCS="$SRCS ssm_model.c"
+fi
 
 echo "[fw] program=$PROG opt=$OPT"
+echo "[fw] compiling: $SRCS"
 # shellcheck disable=SC2086
 "$CC" $CFLAGS $LDFLAGS $SRCS -o firmware.elf $LIBS
 
@@ -64,8 +83,8 @@ with open("firmware.bin", "rb") as f:
 if len(blob) % 4:
     blob += b"\x00" * (4 - len(blob) % 4)
 
-MEM_WORDS = 8192   # must match MEM_WORDS in the SoC top and LENGTH in link.ld
-                   # 8192 words * 4 B = 32 KB
+MEM_WORDS = 32768  # must match MEM_WORDS in rtl/a7lite_soc_top.sv and LENGTH in link.ld
+                   # 32768 words * 4 B = 128 KB
 words = struct.unpack("<%dI" % (len(blob) // 4), blob)
 if len(words) > MEM_WORDS:
     raise SystemExit(

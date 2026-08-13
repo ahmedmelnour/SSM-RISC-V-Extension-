@@ -4,7 +4,7 @@
 // Minimal SoC around CV32E40X for MicroPhase A7-Lite (XC7A35T-2FGG484) bring-up.
 //
 // Memory map
-//   0x0000_0000 - 0x0000_7FFF   32 KB unified instruction/data RAM (BRAM)
+//   0x0000_0000 - 0x0001_FFFF   128 KB unified instruction/data RAM (BRAM)
 //   0x1000_0000                 UART TX data   (write byte)
 //   0x1000_0004                 UART status    (bit0 = busy, read-only)
 //   0x1000_0008                 GPIO out       (bit0 -> LED2)
@@ -182,10 +182,14 @@ module a7lite_soc_top
   );
 
   // ---------------------------------------------------------------------------
-  // Unified 32 KB RAM, inferred as true dual-port BRAM.
+  // Unified 128 KB RAM, inferred as true dual-port BRAM.
   //   port A: instruction fetch (read only)
   //   port B: data load/store
-  // 8192 words -> word index is addr[14:2], i.e. 13 bits.
+  // 32768 words -> word index is addr[16:2], i.e. 15 bits.
+  //
+  // Sized at 128 KB (32 of the 50 RAMB36 on this part) so that an INT8 SSM model
+  // of a few tens of thousands of parameters fits alongside code and stack. At
+  // the original 32 KB a 20k-parameter model was already at the ceiling.
   //
   // The memory is written as four independent byte-wide arrays rather than one
   // 32-bit array with byte enables. With a single MEM_WORDSx32 array Vivado
@@ -205,9 +209,9 @@ module a7lite_soc_top
   // abandoned SoC indexed an 8192-entry array with addr[16:2] and silently
   // aliased -- see doc/BRINGUP.md 10.2.
   // ---------------------------------------------------------------------------
-  localparam int MEM_WORDS = 8192;
-  localparam int AW_HI     = 2 + $clog2(MEM_WORDS) - 1;   // = 14
-  localparam int IDX_W     = $clog2(MEM_WORDS);           // = 13
+  localparam int MEM_WORDS = 32768;
+  localparam int AW_HI     = 2 + $clog2(MEM_WORDS) - 1;   // = 16
+  localparam int IDX_W     = $clog2(MEM_WORDS);           // = 15
 
   (* ram_style = "block" *) logic [7:0] mem0 [0:MEM_WORDS-1];
   (* ram_style = "block" *) logic [7:0] mem1 [0:MEM_WORDS-1];

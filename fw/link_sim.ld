@@ -1,6 +1,12 @@
 /* ---------------------------------------------------------------------------
- * link_sim.ld -- GENERATED from link.ld; RAM relocated to 0x8000_0000 for Spike.
- * LENGTH must track MEM_WORDS in rtl/a7lite_soc_top.sv and fw/build.sh.
+ * link_sim.ld -- link.ld with RAM relocated to 0x8000_0000 for Spike.
+ *
+ * Hand-maintained, despite once being labelled "generated" -- nothing generates
+ * it. That is a drift hazard: this is the FOURTH place the memory size is written
+ * down (doc/BRINGUP.md §10.1 lists the other three) and it silently stayed at 32K
+ * through the widening to 128K. LENGTH must track MEM_WORDS in
+ * rtl/a7lite_soc_top.sv, MEM_WORDS in fw/build.sh, and LENGTH in fw/link.ld.
+ *
  * Simulation only: Spike boots at 0x1000 and maps a boot ROM there, so a RAM
  * region based at 0x0 would collide with it. Not the SoC memory map.
  * --------------------------------------------------------------------------- */
@@ -10,7 +16,7 @@ ENTRY( _start )
 
 MEMORY
 {
-  RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 32K
+  RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 128K
 }
 
 SECTIONS
