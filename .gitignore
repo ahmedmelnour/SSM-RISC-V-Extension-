@@ -14,6 +14,13 @@ fw/*.map
 fw/*.dis
 fw/*.mem
 
+# Verilator build outputs (regenerate with verilator/build.sh)
+verilator/obj_dir/
+verilator/obj_dir_trace/
+
+# Waveform dumps: 19 MB per traced run, regenerate with verilator/wave.sh
+*.vcd
+
 # Upstream core is cloned, not vendored into history.
 # See scripts/fetch_core.sh for the pinned revision.
 vendor/
